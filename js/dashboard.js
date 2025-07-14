@@ -1,7 +1,7 @@
 // Dashboard functionality
 import { auth, onAuthStateChanged } from './auth.js';
 import { db } from './firebase-config.js';
-import { collection, addDoc, getDocs, deleteDoc, doc, onSnapshot, query, orderBy } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js';
+import { collection, addDoc, getDocs, deleteDoc, doc, onSnapshot, query, orderBy, updateDoc } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js';
 import { updateProfile, updatePassword, reauthenticateWithCredential, EmailAuthProvider, deleteUser } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js';
 
 // Global variables
@@ -190,13 +190,14 @@ function handleTextSubmit(e) {
 
     const title = textTitle.value.trim();
     const content = textContent.value.trim();
+    const extension = document.getElementById('textExtension')?.value.trim();
 
-    if (!title || !content) {
-        showSaveStatus('Please fill in both title and content', 'error');
+    if (!title || !content || !extension || !/^\.[a-zA-Z0-9]+$/.test(extension)) {
+        showSaveStatus('Please fill in all fields and provide a valid file extension', 'error');
         return;
     }
 
-    saveText(title, content);
+    saveText(title, content, extension);
 }
 
 function updateTextCounts() {
@@ -208,7 +209,7 @@ function updateTextCounts() {
     wordCount.textContent = `${wordCountValue} words`;
 }
 
-function saveText(title, content) {
+function saveText(title, content, extension) {
     if (!currentUser) return;
 
     // Disable save button
@@ -223,11 +224,12 @@ function saveText(title, content) {
     const textData = {
         title: title,
         content: content,
+        extension: extension,
         charCount: content.length,
         wordCount: content.trim() ? content.trim().split(/\s+/).length : 0,
-                uploadTime: Date.now(),
-                userId: currentUser.uid
-            };
+        uploadTime: Date.now(),
+        userId: currentUser.uid
+    };
 
     // Save text data to Firestore
     const textsRef = collection(db, 'texts');
@@ -333,7 +335,7 @@ function displayTexts() {
     if (userTexts.length === 0) {
         console.log('No texts to display, showing empty state');
         filesList.innerHTML = `
-            <div class="text-center py-12">
+            <div class="text-center py-12 col-span-3">
                 <svg class="mx-auto h-16 w-16 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                 </svg>
@@ -344,48 +346,97 @@ function displayTexts() {
         return;
     }
 
-    filesList.innerHTML = userTexts.map(text => `
-        <div class="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 hover:shadow-md transition-all duration-300">
-            <div class="flex items-center flex-1">
-                <div class="w-10 h-10 bg-blue-500 bg-opacity-20 rounded-lg flex items-center justify-center mr-4">
-                    <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                    </svg>
-                </div>
-                <div class="flex-1 min-w-0">
-                    <h4 class="text-sm font-medium text-gray-900 dark:text-white truncate">${text.title}</h4>
-                    <p class="text-xs text-gray-500 dark:text-gray-400">
-                        ${text.charCount} characters • ${text.wordCount} words • ${formatDate(text.uploadTime)}
-                    </p>
-                    <p class="text-xs text-gray-400 dark:text-gray-500 mt-1 truncate">${text.content.substring(0, 100)}${text.content.length > 100 ? '...' : ''}</p>
-                </div>
+    filesList.innerHTML = userTexts.map(text => {
+        const preview = text.content.length > 200 ? escapeHTML(text.content.substring(0, 200)) + '...' : escapeHTML(text.content);
+        return `
+    <div class="flex flex-col h-full justify-between p-6 bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-xl hover:scale-[1.025] transition-all duration-300 group">
+        <div class="flex items-start gap-4 mb-3">
+            <div class="flex-shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center shadow-md">
+                <svg class="w-6 h-6 text-white opacity-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                </svg>
             </div>
-            <div class="flex items-center space-x-2 ml-4">
-                <button onclick="viewText('${text.id}')" 
-                        class="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900 dark:hover:bg-opacity-20 rounded-lg transition-all duration-300"
-                        title="View full text">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
-                    </svg>
-                </button>
-                <button onclick="copyText('${text.content}')" 
-                        class="p-2 text-green-600 hover:bg-green-50 dark:hover:bg-green-900 dark:hover:bg-opacity-20 rounded-lg transition-all duration-300"
-                        title="Copy text">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
-                    </svg>
-                </button>
-                <button onclick="deleteText('${text.id}')" 
-                        class="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900 dark:hover:bg-opacity-20 rounded-lg transition-all duration-300"
-                        title="Delete text">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-                    </svg>
-                </button>
+            <div class="flex-1 min-w-0">
+                <h4 class="text-lg font-semibold text-gray-900 dark:text-white mb-1 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">${escapeHTML(text.title)}</h4>
+                <div class="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400 mb-1">
+                    <span>${text.charCount} chars</span>
+                    <span>•</span>
+                    <span>${text.wordCount} words</span>
+                    <span>•</span>
+                    <span>${formatDate(text.uploadTime)}</span>
+                </div>
             </div>
         </div>
-    `).join('');
+        <div class="flex-1 mb-4">
+            <p class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line break-words line-clamp-4">${preview}</p>
+        </div>
+        <div class="flex items-center justify-end gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+            <button class="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900 dark:hover:bg-opacity-20 rounded-lg transition-all duration-300 view-text-btn" data-id="${text.id}" title="View full text">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                </svg>
+            </button>
+            <button class="p-2 text-green-600 hover:bg-green-50 dark:hover:bg-green-900 dark:hover:bg-opacity-20 rounded-lg transition-all duration-300 copy-text-btn" data-content="${escapeHTML(text.content)}" title="Copy text">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                </svg>
+            </button>
+            <button class="p-2 text-yellow-500 hover:bg-yellow-50 dark:hover:bg-yellow-900 dark:hover:bg-opacity-20 rounded-lg transition-all duration-300 edit-text-btn" data-id="${text.id}" title="Edit text">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536M9 13l6-6m2 2l-6 6m2 2l-6 6m2 2l-6 6"></path>
+                </svg>
+            </button>
+            <button class="p-2 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900 dark:hover:bg-opacity-20 rounded-lg transition-all duration-300 download-text-btn" data-id="${text.id}" title="Download text">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"></path>
+                </svg>
+            </button>
+            <button class="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900 dark:hover:bg-opacity-20 rounded-lg transition-all duration-300 delete-text-btn" data-id="${text.id}" title="Delete text">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                </svg>
+            </button>
+        </div>
+    </div>
+    `;
+    }).join('');
+
+// Add event listeners for card actions after rendering
+filesList.querySelectorAll('.view-text-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const id = this.getAttribute('data-id');
+        window.viewText(id);
+    });
+});
+filesList.querySelectorAll('.copy-text-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        // Unescape HTML entities for copying
+        const html = this.getAttribute('data-content');
+        const txt = document.createElement('textarea');
+        txt.innerHTML = html;
+        const value = txt.value;
+        window.copyText(value);
+    });
+});
+filesList.querySelectorAll('.edit-text-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const id = this.getAttribute('data-id');
+        window.editText(id);
+    });
+});
+filesList.querySelectorAll('.download-text-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const id = this.getAttribute('data-id');
+        window.downloadText(id);
+    });
+});
+filesList.querySelectorAll('.delete-text-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const id = this.getAttribute('data-id');
+        window.deleteText(id);
+    });
+});
 }
 
 function updateStats() {
@@ -440,10 +491,27 @@ function formatDate(timestamp) {
     return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
 }
 
+// Utility function to escape HTML special characters
+function escapeHTML(str) {
+    return str.replace(/[&<>"']/g, function(tag) {
+        const charsToReplace = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        };
+        return charsToReplace[tag] || tag;
+    });
+}
+
 // Global functions for text operations
 window.viewText = function(textId) {
     const text = userTexts.find(t => t.id === textId);
     if (!text) return;
+
+    // Remove any existing modal
+    document.querySelectorAll('.fixed.inset-0.z-50').forEach(el => el.remove());
 
     // Create modal to show full text
     const modal = document.createElement('div');
@@ -451,35 +519,39 @@ window.viewText = function(textId) {
     modal.innerHTML = `
         <div class="bg-white dark:bg-gray-800 rounded-lg max-w-4xl w-full max-h-[80vh] overflow-hidden">
             <div class="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-                <h3 class="text-lg font-semibold text-gray-900 dark:text-white">${text.title}</h3>
-                <button onclick="this.closest('.fixed').remove()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                <h3 class="text-lg font-semibold text-gray-900 dark:text-white">${escapeHTML(text.title)}</h3>
+                <button class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 close-modal-btn">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                     </svg>
                 </button>
             </div>
-            <div class="p-6 overflow-y-auto max-h-[60vh]">
-                <div class="text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap">${text.content}</div>
+            <div class="p-6 overflow-y-auto max-h-[60vh] custom-scrollbar">
+                <div class="text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-words">${escapeHTML(text.content)}</div>
             </div>
             <div class="flex items-center justify-between p-6 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700">
                 <div class="text-sm text-gray-500 dark:text-gray-400">
                     ${text.charCount} characters • ${text.wordCount} words • ${formatDate(text.uploadTime)}
                 </div>
-                <button onclick="copyText('${text.content.replace(/'/g, "\\'")}'); this.closest('.fixed').remove()" 
-                        class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-all duration-300">
+                <button class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-all duration-300 copy-modal-btn">
                     Copy Text
                 </button>
             </div>
         </div>
     `;
-    
     document.body.appendChild(modal);
-    
-    // Close modal when clicking outside
+
+    // Close modal when clicking outside or on close button
     modal.addEventListener('click', (e) => {
         if (e.target === modal) {
             modal.remove();
         }
+    });
+    modal.querySelector('.close-modal-btn').addEventListener('click', () => modal.remove());
+    // Copy button in modal
+    modal.querySelector('.copy-modal-btn').addEventListener('click', () => {
+        window.copyText(text.content);
+        modal.remove();
     });
 };
 
@@ -762,6 +834,7 @@ async function handleExportData() {
                     id: doc.id,
                     title: data.title,
                     content: data.content,
+                    extension: data.extension,
                     uploadTime: data.uploadTime.toDate().toISOString(),
                     charCount: data.charCount,
                     wordCount: data.wordCount
@@ -881,5 +954,83 @@ window.togglePasswordVisibility = function(inputId) {
         input.type = 'password';
         icon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>';
     }
+};
+
+window.editText = function(textId) {
+    const text = userTexts.find(t => t.id === textId);
+    if (!text) return;
+    // Remove any existing modal
+    document.querySelectorAll('.fixed.inset-0.z-50').forEach(el => el.remove());
+    // Create edit modal
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4';
+    modal.innerHTML = `
+        <div class="bg-white dark:bg-gray-800 rounded-lg max-w-2xl w-full max-h-[80vh] overflow-hidden">
+            <div class="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+                <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Edit Text</h3>
+                <button class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 close-modal-btn">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            <form class="p-6 space-y-4 edit-text-form">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Title</label>
+                    <input type="text" name="title" class="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white" value="${escapeHTML(text.title)}" required />
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Text</label>
+                    <textarea name="content" rows="10" class="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white" required>${escapeHTML(text.content)}</textarea>
+                </div>
+                <div class="flex justify-end gap-2">
+                    <button type="button" class="px-4 py-2 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 close-modal-btn">Cancel</button>
+                    <button type="submit" class="px-4 py-2 rounded-lg bg-blue-500 hover:bg-blue-600 text-white">Save</button>
+                </div>
+            </form>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    // Close modal
+    modal.querySelectorAll('.close-modal-btn').forEach(btn => btn.addEventListener('click', () => modal.remove()));
+    // Handle form submit
+    modal.querySelector('.edit-text-form').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const form = e.target;
+        const newTitle = form.title.value.trim();
+        const newContent = form.content.value.trim();
+        if (!newTitle || !newContent) return;
+        try {
+            const dbRef = doc(db, 'texts', textId);
+            await updateDoc(dbRef, {
+                title: newTitle,
+                content: newContent,
+                charCount: newContent.length,
+                wordCount: newContent.trim() ? newContent.trim().split(/\s+/).length : 0
+            });
+            modal.remove();
+            loadUserTexts();
+            updateStats();
+            addRecentActivity('Edited a text');
+        } catch (err) {
+            alert('Failed to update text.');
+        }
+    });
+};
+
+window.downloadText = function(textId) {
+    const text = userTexts.find(t => t.id === textId);
+    if (!text) return;
+    const ext = text.extension && /^\.[a-zA-Z0-9]+$/.test(text.extension) ? text.extension : '.txt';
+    const filename = (text.title || 'text') + ext;
+    const blob = new Blob([text.content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
 };
 
